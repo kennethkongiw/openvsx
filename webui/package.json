@@ -1,6 +1,6 @@
 {
     "name": "openvsx-webui",
-    "version": "0.16.4",
+    "version": "0.17.1",
     "description": "User interface for Eclipse Open VSX",
     "keywords": [
         "react",
@@ -13,7 +13,7 @@
     "homepage": "https://open-vsx.org",
     "repository": {
         "type": "git",
-        "url": "https://github.com/eclipse/openvsx.git",
+        "url": "git+https://github.com/eclipse/openvsx.git",
         "directory": "webui"
     },
     "bugs": "https://github.com/eclipse/openvsx/issues",
@@ -38,6 +38,7 @@
     "dependencies": {
         "@emotion/react": "^11.11.1",
         "@emotion/styled": "^11.11.0",
+        "@mdit/plugin-alert": "^0.22.3",
         "@mui/base": "^5.0.0-beta.9",
         "@mui/icons-material": "^5.13.7",
         "@mui/material": "^5.13.7",
@@ -46,8 +47,8 @@
         "dompurify": "^3.0.4",
         "fetch-retry": "^5.0.6",
         "lodash": "^4.17.21",
-        "markdown-it": "^13.0.1",
-        "markdown-it-anchor": "^8.6.7",
+        "markdown-it": "^14.1.0",
+        "markdown-it-anchor": "^9.2.0",
         "prop-types": "^15.8.1",
         "punycode": "^2.3.0",
         "react": "^18.2.0",
@@ -60,20 +61,21 @@
         "react-router-dom": "^6.14.1"
     },
     "resolutions": {
-        "@types/react": "^18.2.14"
+        "@types/react": "^18.2.14",
+        "qs": "^6.14.1"
     },
     "devDependencies": {
         "@babel/core": "^7.25.2",
         "@eslint/eslintrc": "^3.2.0",
         "@eslint/js": "^9.15.0",
-        "@playwright/test": "^1.49.0",
+        "@playwright/test": "^1.55.1",
         "@stylistic/eslint-plugin": "^2.11.0",
         "@types/babel__core": "^7",
         "@types/chai": "^4.3.5",
         "@types/dompurify": "^3.0.2",
         "@types/express": "^4.17.21",
         "@types/lodash": "^4.14.195",
-        "@types/markdown-it": "^13.0.1",
+        "@types/markdown-it": "^14",
         "@types/mocha": "^10.0.9",
         "@types/node": "^20.4.0",
         "@types/prop-types": "^15.7.5",
@@ -92,11 +94,12 @@
         "eslint-plugin-react": "^7.37.2",
         "express": "^4.21.2",
         "express-rate-limit": "^7.4.0",
-        "mocha": "^10.8.2",
-        "rimraf": "^6.0.1",
+        "mocha": "^11.7.5",
+        "rimraf": "^6.1.2",
         "source-map-loader": "^4.0.1",
         "style-loader": "^3.3.3",
-        "ts-mocha": "^10.0.0",
+        "ts-mocha": "^11.1.0",
+        "ts-node": "^10.9.2",
         "typescript": "~5.1.6",
         "webpack": "^5.88.1",
         "webpack-cli": "^5.1.4"
@@ -107,10 +110,10 @@
         "test": "ts-mocha --project ./configs/test.tsconfig.json --config ./configs/mocharc.json",
         "smoke-tests": "playwright install && playwright test --config=./configs/playwright.config.ts",
         "lint": "eslint -c ./configs/eslintrc.mjs src",
-        "watch": "tsc -w -p ./tsconfig.json",
+        "watch": "tsc -w -p ./tsconfig.json --preserveWatchOutput",
         "prepare": "yarn run clean && yarn run build",
         "build:default": "webpack --config ./configs/webpack.config.js --mode production",
-        "watch:default": "webpack --config ./configs/webpack.config.js --mode development --watch",
+        "watch:default": "webpack --config ./configs/webpack.config.js --mode development --watch --progress --color",
         "start:default": "node lib/default/server",
         "copy2server": "cp -rfv static ../server/src/dev/resources/",
         "publish:next": "yarn npm publish --tag next",

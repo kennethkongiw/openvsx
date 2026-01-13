@@ -27,13 +27,12 @@ import org.eclipse.openvsx.publish.ExtensionVersionIntegrityService;
 import org.eclipse.openvsx.publish.PublishExtensionVersionHandler;
 import org.eclipse.openvsx.publish.PublishExtensionVersionService;
 import org.eclipse.openvsx.repositories.RepositoryService;
-import org.eclipse.openvsx.search.ExtensionSearch;
-import org.eclipse.openvsx.search.ISearchService;
-import org.eclipse.openvsx.search.SearchUtilService;
+import org.eclipse.openvsx.search.*;
 import org.eclipse.openvsx.security.OAuth2AttributesConfig;
 import org.eclipse.openvsx.security.OAuth2UserServices;
 import org.eclipse.openvsx.security.SecurityConfig;
 import org.eclipse.openvsx.storage.*;
+import org.eclipse.openvsx.storage.log.DownloadCountService;
 import org.eclipse.openvsx.util.TargetPlatform;
 import org.eclipse.openvsx.util.VersionAlias;
 import org.eclipse.openvsx.util.VersionService;
@@ -52,9 +51,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.elasticsearch.core.SearchHit;
-import org.springframework.data.elasticsearch.core.SearchHitsImpl;
-import org.springframework.data.elasticsearch.core.TotalHitsRelation;
 import org.springframework.data.util.Streamable;
 import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
@@ -68,7 +64,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.function.BiFunction;
@@ -90,9 +85,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureWebClient
 @MockitoBean(types = {
     ClientRegistrationRepository.class, UpstreamRegistryService.class, GoogleCloudStorageService.class,
-    AzureBlobStorageService.class, AwsStorageService.class, VSCodeIdService.class, AzureDownloadCountService.class,
+    AzureBlobStorageService.class, AwsStorageService.class, VSCodeIdService.class, DownloadCountService.class,
     CacheService.class, EclipseService.class, PublishExtensionVersionService.class, SimpleMeterRegistry.class,
-    JobRequestScheduler.class, ExtensionControlService.class, FileCacheDurationConfig.class
+    JobRequestScheduler.class, ExtensionControlService.class, FileCacheDurationConfig.class, CdnServiceConfig.class
 })
 class RegistryAPITest {
 
@@ -588,6 +583,109 @@ class RegistryAPITest {
                     e1.setTimestamp("2000-01-01T10:00Z");
                     e1.setDisplayName("Foo Bar");
                     s.getExtensions().add(e1);
+                })));
+    }
+
+    @Test
+    void testSearchPublisher() throws Exception {
+        var extVersions = mockSearch();
+        extVersions.forEach(extVersion -> Mockito.when(repositories.findLatestVersion(extVersion.getExtension(), null, false, true)).thenReturn(extVersion));
+        Mockito.when(repositories.findLatestVersions(extVersions.stream().map(ExtensionVersion::getExtension).map(Extension::getId).toList()))
+                .thenReturn(extVersions);
+
+        mockMvc.perform(get("/api/-/search?query={query}&size={size}&offset={offset}", "publisher:foo", "10", "0"))
+                .andExpect(status().isOk())
+                .andExpect(content().json(searchJson(s -> {
+                    s.setOffset(0);
+                    s.setTotalSize(1);
+                    var e1 = new SearchEntryJson();
+                    e1.setNamespace("foo");
+                    e1.setName("bar");
+                    e1.setVersion("1.0.0");
+                    e1.setTimestamp("2000-01-01T10:00Z");
+                    e1.setDisplayName("Foo Bar");
+                    s.getExtensions().add(e1);
+                })));
+    }
+
+    @Test
+    void testSearchPublisherWithQueryLast() throws Exception {
+        var extVersions = mockSearch();
+        extVersions.forEach(extVersion -> Mockito.when(repositories.findLatestVersion(extVersion.getExtension(), null, false, true)).thenReturn(extVersion));
+        Mockito.when(repositories.findLatestVersions(extVersions.stream().map(ExtensionVersion::getExtension).map(Extension::getId).toList()))
+                .thenReturn(extVersions);
+
+        mockMvc.perform(get("/api/-/search?query={query}&size={size}&offset={offset}", "publisher:foo bar", "10", "0"))
+                .andExpect(status().isOk())
+                .andExpect(content().json(searchJson(s -> {
+                    s.setOffset(0);
+                    s.setTotalSize(1);
+                    var e1 = new SearchEntryJson();
+                    e1.setNamespace("foo");
+                    e1.setName("bar");
+                    e1.setVersion("1.0.0");
+                    e1.setTimestamp("2000-01-01T10:00Z");
+                    e1.setDisplayName("Foo Bar");
+                    s.getExtensions().add(e1);
+                })));
+    }
+
+    @Test
+    void testSearchPublisherWithQueryFirst() throws Exception {
+        var extVersions = mockSearch();
+        extVersions.forEach(extVersion -> Mockito.when(repositories.findLatestVersion(extVersion.getExtension(), null, false, true)).thenReturn(extVersion));
+        Mockito.when(repositories.findLatestVersions(extVersions.stream().map(ExtensionVersion::getExtension).map(Extension::getId).toList()))
+                .thenReturn(extVersions);
+
+        mockMvc.perform(get("/api/-/search?query={query}&size={size}&offset={offset}", "bar publisher:foo", "10", "0"))
+                .andExpect(status().isOk())
+                .andExpect(content().json(searchJson(s -> {
+                    s.setOffset(0);
+                    s.setTotalSize(1);
+                    var e1 = new SearchEntryJson();
+                    e1.setNamespace("foo");
+                    e1.setName("bar");
+                    e1.setVersion("1.0.0");
+                    e1.setTimestamp("2000-01-01T10:00Z");
+                    e1.setDisplayName("Foo Bar");
+                    s.getExtensions().add(e1);
+                })));
+    }
+
+    @Test
+    void testSearchPublisherWithMoreQuery() throws Exception {
+        var extVersions = mockSearch();
+        extVersions.forEach(extVersion -> Mockito.when(repositories.findLatestVersion(extVersion.getExtension(), null, false, true)).thenReturn(extVersion));
+        Mockito.when(repositories.findLatestVersions(extVersions.stream().map(ExtensionVersion::getExtension).map(Extension::getId).toList()))
+                .thenReturn(extVersions);
+
+        mockMvc.perform(get("/api/-/search?query={query}&size={size}&offset={offset}", "bar publisher:foo code", "10", "0"))
+                .andExpect(status().isOk())
+                .andExpect(content().json(searchJson(s -> {
+                    s.setOffset(0);
+                    s.setTotalSize(1);
+                    var e1 = new SearchEntryJson();
+                    e1.setNamespace("foo");
+                    e1.setName("bar");
+                    e1.setVersion("1.0.0");
+                    e1.setTimestamp("2000-01-01T10:00Z");
+                    e1.setDisplayName("Foo Bar");
+                    s.getExtensions().add(e1);
+                })));
+    }
+
+    @Test
+    void testSearchMultiplePublishers() throws Exception {
+        var extVersions = mockSearch();
+        extVersions.forEach(extVersion -> Mockito.when(repositories.findLatestVersion(extVersion.getExtension(), null, false, true)).thenReturn(extVersion));
+        Mockito.when(repositories.findLatestVersions(extVersions.stream().map(ExtensionVersion::getExtension).map(Extension::getId).toList()))
+                .thenReturn(extVersions);
+
+        mockMvc.perform(get("/api/-/search?query={query}&size={size}&offset={offset}", "publisher:bar publisher:foo", "10", "0"))
+                .andExpect(status().isOk())
+                .andExpect(content().json(searchJson(s -> {
+                    s.setOffset(0);
+                    s.setTotalSize(0);
                 })));
     }
 
@@ -2184,13 +2282,25 @@ class RegistryAPITest {
         extension.setId(1L);
         var entry1 = new ExtensionSearch();
         entry1.setId(1);
-        var searchHit = new SearchHit<>("0", "1", null, 1.0f, null, null, null, null, null, null, entry1);
-        var searchHits = new SearchHitsImpl<>(1, TotalHitsRelation.EQUAL_TO, 1.0f, Duration.ZERO, null, null, List.of(searchHit), null, null, null);
         Mockito.when(search.isEnabled())
                 .thenReturn(true);
-        var searchOptions = new ISearchService.Options("foo", null, null, 10, 0, "desc", "relevance", false, null);
+        var searchResult = new SearchResult(1, List.of(entry1));
+        var searchOptions = new ISearchService.Options("foo", null, null, 10, 0, "desc", SortBy.RELEVANCE, false, null);
         Mockito.when(search.search(searchOptions))
-                .thenReturn(searchHits);
+                .thenReturn(searchResult);
+
+        var publisherSearchOptions = new ISearchService.Options("", null, null, 10, 0, "desc", SortBy.RELEVANCE, false, null, "foo");
+        Mockito.when(search.search(publisherSearchOptions))
+                .thenReturn(searchResult);
+
+        var publisherWithQuerySearchOptions = new ISearchService.Options("bar", null, null, 10, 0, "desc", SortBy.RELEVANCE, false, null, "foo");
+        Mockito.when(search.search(publisherWithQuerySearchOptions))
+                .thenReturn(searchResult);
+
+        var publisherWithMoreQuerySearchOptions = new ISearchService.Options("bar code", null, null, 10, 0, "desc", SortBy.RELEVANCE, false, null, "foo");
+        Mockito.when(search.search(publisherWithMoreQuerySearchOptions))
+                .thenReturn(searchResult);
+
         return List.of(extVersion);
     }
 
@@ -2436,7 +2546,6 @@ class RegistryAPITest {
                 StorageUtilService storageUtil,
                 EclipseService eclipse,
                 CacheService cache,
-                FileCacheDurationConfig fileCacheDurationConfig,
                 ExtensionVersionIntegrityService integrityService
         ) {
             return new LocalRegistryService(
@@ -2456,12 +2565,14 @@ class RegistryAPITest {
 
         @Bean
         ExtensionService extensionService(
+                EntityManager entityManager,
                 RepositoryService repositories,
                 SearchUtilService search,
                 CacheService cache,
-                PublishExtensionVersionHandler publishHandler
+                PublishExtensionVersionHandler publishHandler,
+                JobRequestScheduler scheduler
         ) {
-            return new ExtensionService(repositories, search, cache, publishHandler);
+            return new ExtensionService(entityManager, repositories, search, cache, publishHandler, scheduler);
         }
 
         @Bean
@@ -2476,11 +2587,12 @@ class RegistryAPITest {
                 AzureBlobStorageService azureStorage,
                 LocalStorageService localStorage,
                 AwsStorageService awsStorage,
-                AzureDownloadCountService azureDownloadCountService,
+                DownloadCountService downloadCountService,
                 SearchUtilService search,
                 CacheService cache,
                 EntityManager entityManager,
-                FileCacheDurationConfig fileCacheDurationConfig
+                FileCacheDurationConfig fileCacheDurationConfig,
+                CdnServiceConfig cdnServiceConfig
         ) {
             return new StorageUtilService(
                     repositories,
@@ -2488,11 +2600,12 @@ class RegistryAPITest {
                     azureStorage,
                     localStorage,
                     awsStorage,
-                    azureDownloadCountService,
+                    downloadCountService,
                     search,
                     cache,
                     entityManager,
-                    fileCacheDurationConfig
+                    fileCacheDurationConfig,
+                    cdnServiceConfig
             );
         }
 

@@ -1,6 +1,6 @@
 {
     "name": "ovsx",
-    "version": "0.10.5",
+    "version": "0.10.8",
     "description": "Command line interface for Eclipse Open VSX",
     "keywords": [
         "cli",
@@ -12,7 +12,7 @@
     "homepage": "https://open-vsx.org",
     "repository": {
         "type": "git",
-        "url": "https://github.com/eclipse/openvsx.git",
+        "url": "git+https://github.com/eclipse/openvsx.git",
         "directory": "cli"
     },
     "bugs": "https://github.com/eclipse/openvsx/issues",
@@ -29,7 +29,9 @@
     ],
     "main": "lib/index",
     "types": "lib/index",
-    "bin": "lib/ovsx",
+    "bin": {
+        "ovsx": "bin/ovsx"
+    },
     "engines": {
         "node": ">= 20"
     },
@@ -60,10 +62,14 @@
         "rimraf": "^6.0.1",
         "typescript": "^5.6.3"
     },
+    "resolutions": {
+        "glob": "^11.1.0",
+        "jws": "^4.0.1"
+    },
     "scripts": {
         "clean": "rimraf lib",
         "prebuild": "node -p \"'export const LIB_VERSION = ' + JSON.stringify(require('./package.json').version) + ';'\" > src/version.ts",
-        "build": "tsc -p ./tsconfig.json && yarn run lint && cp src/ovsx lib/ovsx",
+        "build": "tsc -p ./tsconfig.json && yarn run lint",
         "watch": "tsc -w -p ./tsconfig.json",
         "lint": "eslint -c ./configs/eslintrc.mjs src",
         "prepare": "yarn run clean && yarn run prebuild && yarn run build",

@@ -21,6 +21,7 @@ import org.eclipse.openvsx.eclipse.EclipseService;
 import org.eclipse.openvsx.eclipse.TokenService;
 import org.eclipse.openvsx.entities.*;
 import org.eclipse.openvsx.json.*;
+import org.eclipse.openvsx.mail.MailService;
 import org.eclipse.openvsx.publish.ExtensionVersionIntegrityService;
 import org.eclipse.openvsx.publish.PublishExtensionVersionHandler;
 import org.eclipse.openvsx.repositories.RepositoryService;
@@ -29,6 +30,7 @@ import org.eclipse.openvsx.security.OAuth2AttributesConfig;
 import org.eclipse.openvsx.security.OAuth2UserServices;
 import org.eclipse.openvsx.security.SecurityConfig;
 import org.eclipse.openvsx.storage.*;
+import org.eclipse.openvsx.storage.log.DownloadCountService;
 import org.eclipse.openvsx.util.TargetPlatform;
 import org.eclipse.openvsx.util.VersionService;
 import org.jobrunr.scheduling.JobRequestScheduler;
@@ -51,16 +53,12 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -71,9 +69,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureWebClient
 @MockitoBean(types = {
     ClientRegistrationRepository.class, UpstreamRegistryService.class, GoogleCloudStorageService.class,
-    AzureBlobStorageService.class, AwsStorageService.class, VSCodeIdService.class, AzureDownloadCountService.class,
+    AzureBlobStorageService.class, AwsStorageService.class, VSCodeIdService.class, DownloadCountService.class,
     CacheService.class, PublishExtensionVersionHandler.class, SearchUtilService.class, EclipseService.class,
-    SimpleMeterRegistry.class, FileCacheDurationConfig.class
+    SimpleMeterRegistry.class, FileCacheDurationConfig.class, MailService.class, CdnServiceConfig.class
 })
 class AdminAPITest {
     
@@ -299,6 +297,8 @@ class AdminAPITest {
         mockAdminUser();
         mockExtension(2, 0, 0);
         mockMvc.perform(post("/admin/extension/{namespace}/{extension}/delete", "foobar", "baz")
+                .content("[{\"targetPlatform\":\"universal\",\"version\":\"1.0.0\"},{\"targetPlatform\":\"universal\",\"version\":\"2.0.0\"}]")
+                .contentType(MediaType.APPLICATION_JSON)
                 .with(user("admin_user").authorities(new SimpleGrantedAuthority(("ROLE_ADMIN"))))
                 .with(csrf().asHeader()))
                 .andExpect(status().isOk())
@@ -324,25 +324,25 @@ class AdminAPITest {
     @Test
     void testDeleteExtensionVersion() throws Exception {
         mockAdminUser();
-        mockExtension(2, 0, 0);
+        mockExtension(3, 0, 0);
         mockMvc.perform(post("/admin/extension/{namespace}/{extension}/delete", "foobar", "baz")
-                .content("[{\"targetPlatform\":\"universal\",\"version\":\"2.0.0\"}]")
+                .content("[{\"targetPlatform\":\"universal\",\"version\":\"1.0.0\"},{\"targetPlatform\":\"universal\",\"version\":\"2.0.0\"}]")
                 .contentType(MediaType.APPLICATION_JSON)
                 .with(user("admin_user").authorities(new SimpleGrantedAuthority(("ROLE_ADMIN"))))
                 .with(csrf().asHeader()))
                 .andExpect(status().isOk())
-                .andExpect(content().json(successJson("Deleted foobar.baz 2.0.0")));
+                .andExpect(content().json(successJson("Deleted foobar.baz 1.0.0\nDeleted foobar.baz 2.0.0")));
     }
 
     @Test
     void testDeleteExtensionVersionWithToken() throws Exception {
         var token = mockAdminToken();
-        mockExtension(2, 0, 0);
+        mockExtension(3, 0, 0);
         mockMvc.perform(post("/admin/api/extension/{namespace}/{extension}/delete?token={token}", "foobar", "baz", token.getValue())
-                        .content("[{\"targetPlatform\":\"universal\",\"version\":\"2.0.0\"}]")
+                        .content("[{\"targetPlatform\":\"universal\",\"version\":\"1.0.0\"},{\"targetPlatform\":\"universal\",\"version\":\"2.0.0\"}]")
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(content().json(successJson("Deleted foobar.baz 2.0.0")));
+                .andExpect(content().json(successJson("Deleted foobar.baz 1.0.0\nDeleted foobar.baz 2.0.0")));
     }
 
     @Test
@@ -372,6 +372,8 @@ class AdminAPITest {
         mockAdminUser();
         mockExtension(2, 1, 0);
         mockMvc.perform(post("/admin/extension/{namespace}/{extension}/delete", "foobar", "baz")
+                .content("[{\"targetPlatform\":\"universal\",\"version\":\"1.0.0\"},{\"targetPlatform\":\"universal\",\"version\":\"2.0.0\"}]")
+                .contentType(MediaType.APPLICATION_JSON)
                 .with(user("admin_user").authorities(new SimpleGrantedAuthority(("ROLE_ADMIN"))))
                 .with(csrf().asHeader()))
                 .andExpect(status().isBadRequest())
@@ -383,6 +385,8 @@ class AdminAPITest {
         mockAdminUser();
         mockExtension(2, 0, 1);
         mockMvc.perform(post("/admin/extension/{namespace}/{extension}/delete", "foobar", "baz")
+                .content("[{\"targetPlatform\":\"universal\",\"version\":\"1.0.0\"},{\"targetPlatform\":\"universal\",\"version\":\"2.0.0\"}]")
+                .contentType(MediaType.APPLICATION_JSON)
                 .with(user("admin_user").authorities(new SimpleGrantedAuthority(("ROLE_ADMIN"))))
                 .with(csrf().asHeader()))
                 .andExpect(status().isBadRequest())
@@ -575,6 +579,7 @@ class AdminAPITest {
         Mockito.when(repositories.findUserByLoginName("github", "test")).thenReturn(user);
         Mockito.when(repositories.countActiveAccessTokens(user)).thenReturn(1L);
         Mockito.when(repositories.findLatestVersions(user)).thenReturn(versions);
+        Mockito.when(repositories.findActiveReviews(user)).thenReturn(Streamable.empty());
 
         mockMvc.perform(get("/admin/publisher/{provider}/{loginName}", "github", "test")
                 .with(user("admin_user").authorities(new SimpleGrantedAuthority(("ROLE_ADMIN"))))
@@ -627,14 +632,51 @@ class AdminAPITest {
         Mockito.when(repositories.findVersionsByUser(user, true))
                 .thenReturn(Streamable.of(versions));
 
+        Mockito.when(repositories.findActiveReviews(user))
+                .thenReturn(Streamable.empty());
+
         mockMvc.perform(post("/admin/publisher/{provider}/{loginName}/revoke", "github", "test")
                 .with(user("admin_user").authorities(new SimpleGrantedAuthority(("ROLE_ADMIN"))))
                 .with(csrf().asHeader()))
                 .andExpect(status().isOk())
-                .andExpect(content().json(successJson("Deactivated 1 tokens and deactivated 1 extensions of user github/test.")));
+                .andExpect(content().json(successJson("Deactivated 1 tokens, deactivated 1 extensions of user github/test.")));
 
         assertThat(token.isActive()).isFalse();
         assertThat(versions.get(0).isActive()).isFalse();
+    }
+
+    @Test
+    void testRevokeAccessTokensNotLoggedIn() throws Exception {
+        mockNamespace();
+        mockMvc.perform(post("/admin/publisher/{provider}/{loginName}/tokens/revoke", "github", "test")
+                        .with(csrf().asHeader()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void testRevokeAccessTokensNotAdmin() throws Exception {
+        mockNormalUser();
+        mockMvc.perform(post("/admin/publisher/{provider}/{loginName}/tokens/revoke", "github", "test")
+                        .with(user("test_user"))
+                        .with(csrf().asHeader()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void testRevokeAccessTokens() throws Exception {
+        mockAdminUser();
+        var user = new UserData();
+        user.setLoginName("test");
+        user.setProvider("github");
+        Mockito.when(repositories.findUserByLoginName("github", "test"))
+                .thenReturn(user);
+
+        Mockito.when(repositories.deactivateAccessTokens(user)).thenReturn(2);
+        mockMvc.perform(post("/admin/publisher/{provider}/{loginName}/tokens/revoke", "github", "test")
+                        .with(user("admin_user").authorities(new SimpleGrantedAuthority(("ROLE_ADMIN"))))
+                        .with(csrf().asHeader()))
+                .andExpect(status().isOk())
+                .andExpect(content().json(successJson("Deactivated 2 tokens of user github/test.")));
     }
 
     @Test
@@ -1104,6 +1146,57 @@ class AdminAPITest {
                 .andExpect(content().json(errorJson("New namespace already exists: bar")));
     }
 
+    @Test
+    void testDeleteReview() throws Exception {
+        mockAdminUser();
+        mockReviews();
+
+        mockMvc.perform(post("/admin/extension/{namespace}/{extension}/review/{provider}/{loginName}/delete", "foobar", "baz", "github", "user1")
+                        .with(user("admin_user").authorities(new SimpleGrantedAuthority(("ROLE_ADMIN"))))
+                        .with(csrf().asHeader()))
+                .andExpect(status().isOk())
+                .andExpect(content().json(successJson("Deleted review from user1 for foobar.baz")));
+    }
+
+    @Test
+    void testDeleteReviewNotLoggedIn() throws Exception {
+        mockMvc.perform(post("/admin/extension/{namespace}/{extension}/review/{provider}/{loginName}/delete", "foo", "bar", "github", "user1")
+                        .with(csrf()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void testDeleteReviewNormalUser() throws Exception {
+        mockNormalUser();
+
+        mockMvc.perform(post("/admin/extension/{namespace}/{extension}/review/{provider}/{loginName}/delete", "foo", "bar", "github", "user1")
+                        .with(user("test_user"))
+                        .with(csrf().asHeader()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void testDeleteReviewUnknownExtension() throws Exception {
+        mockAdminUser();
+        mockMvc.perform(post("/admin/extension/{namespace}/{extension}/review/{provider}/{loginName}/delete", "foo", "bar", "github", "user1")
+                .with(user("admin_user").authorities(new SimpleGrantedAuthority(("ROLE_ADMIN"))))
+                .with(csrf().asHeader()))
+                .andExpect(status().isNotFound())
+                .andExpect(content().json(errorJson("Extension not found: foo.bar")));
+    }
+
+    @Test
+    void testDeleteReviewNonExistingReview() throws Exception {
+        mockAdminUser();
+        mockReviews();
+
+        mockMvc.perform(post("/admin/extension/{namespace}/{extension}/review/{provider}/{loginName}/delete", "foobar", "baz", "github", "user3")
+                        .with(user("admin_user").authorities(new SimpleGrantedAuthority(("ROLE_ADMIN"))))
+                        .with(csrf().asHeader()))
+                .andExpect(status().isNotFound())
+                .andExpect(content().json(errorJson("No active review for extension foobar.baz and user user3 found")));
+    }
+
     //---------- UTILITY ----------//
 
     private PersonalAccessToken mockAdminToken() {
@@ -1204,7 +1297,7 @@ class AdminAPITest {
         }
 
         extension.getVersions().addAll(versions);
-        Mockito.when(repositories.countVersions(extension)).thenReturn(numberOfVersions);
+        Mockito.when(repositories.countVersions(namespace.getName(), extension.getName())).thenReturn(numberOfVersions);
         Mockito.when(repositories.findLatestVersion(namespace.getName(), extension.getName(), null, false, false))
                 .thenReturn(versions.get(numberOfVersions - 1));
         Mockito.when(repositories.findVersions(extension))
@@ -1249,8 +1342,58 @@ class AdminAPITest {
         return versions;
     }
 
+    private List<ExtensionReview> mockReviews() {
+        var extVersions = mockExtension(1, 0, 0);
+        var extVersion = extVersions.get(0);
+        var extension = extVersion.getExtension();
+
+        var user1 = new UserData();
+        user1.setLoginName("user1");
+        var review1 = new ExtensionReview();
+        review1.setId(1);
+        review1.setExtension(extension);
+        review1.setUser(user1);
+        review1.setRating(3);
+        review1.setComment("Somewhat ok");
+        review1.setTimestamp(LocalDateTime.parse("2000-01-01T10:00"));
+        review1.setActive(true);
+
+        var user2 = new UserData();
+        user2.setLoginName("user2");
+        var review2 = new ExtensionReview();
+        review2.setId(2);
+        review2.setExtension(extension);
+        review2.setUser(user2);
+        review2.setRating(4);
+        review2.setComment("Quite good");
+        review2.setTimestamp(LocalDateTime.parse("2000-01-01T10:00"));
+        review2.setActive(true);
+
+        var user3 = new UserData();
+        user3.setLoginName("user3");
+
+        Mockito.when(repositories.findUserByLoginName(anyString(), eq("user1")))
+                .thenReturn(user1);
+        Mockito.when(repositories.findUserByLoginName(anyString(), eq("user2")))
+                .thenReturn(user2);
+        Mockito.when(repositories.findUserByLoginName(anyString(), eq("user3")))
+                .thenReturn(user3);
+
+        Mockito.when(repositories.findActiveReviews(any(), any()))
+                .thenReturn(Streamable.empty());
+        Mockito.when(repositories.findActiveReviews(extension, user1))
+                .thenReturn(Streamable.of(review1));
+        Mockito.when(repositories.findActiveReviews(extension, user2))
+                .thenReturn(Streamable.of(review2));
+
+        Mockito.when(repositories.findActiveReviews(extension))
+                .thenReturn(Streamable.of(review1, review2));
+
+        return List.of(review1, review2);
+    }
+
     private String createVersion(int major) {
-        return Integer.toString(major) + ".0.0";
+        return major + ".0.0";
     }
 
     private String adminStatisticsJson(Consumer<AdminStatisticsJson> content) throws JsonProcessingException {
@@ -1334,7 +1477,8 @@ class AdminAPITest {
                 EclipseService eclipse,
                 StorageUtilService storageUtil,
                 CacheService cache,
-                JobRequestScheduler scheduler
+                JobRequestScheduler scheduler,
+                MailService mail
         ) {
             return new AdminService(
                     repositories,
@@ -1346,7 +1490,8 @@ class AdminAPITest {
                     eclipse,
                     storageUtil,
                     cache,
-                    scheduler
+                    scheduler,
+                    mail
             );
         }
 
@@ -1382,12 +1527,14 @@ class AdminAPITest {
 
         @Bean
         ExtensionService extensionService(
+                EntityManager entityManager,
                 RepositoryService repositories,
                 SearchUtilService search,
                 CacheService cache,
-                PublishExtensionVersionHandler publishHandler
+                PublishExtensionVersionHandler publishHandler,
+                JobRequestScheduler scheduler
         ) {
-            return new ExtensionService(repositories, search, cache, publishHandler);
+            return new ExtensionService(entityManager, repositories, search, cache, publishHandler, scheduler);
         }
 
         @Bean
@@ -1402,11 +1549,12 @@ class AdminAPITest {
                 AzureBlobStorageService azureStorage,
                 LocalStorageService localStorage,
                 AwsStorageService awsStorage,
-                AzureDownloadCountService azureDownloadCountService,
+                DownloadCountService downloadCountService,
                 SearchUtilService search,
                 CacheService cache,
                 EntityManager entityManager,
-                FileCacheDurationConfig fileCacheDurationConfig
+                FileCacheDurationConfig fileCacheDurationConfig,
+                CdnServiceConfig cdnServiceConfig
         ) {
             return new StorageUtilService(
                     repositories,
@@ -1414,11 +1562,12 @@ class AdminAPITest {
                     azureStorage,
                     localStorage,
                     awsStorage,
-                    azureDownloadCountService,
+                    downloadCountService,
                     search,
                     cache,
                     entityManager,
-                    fileCacheDurationConfig
+                    fileCacheDurationConfig,
+                    cdnServiceConfig
             );
         }
 

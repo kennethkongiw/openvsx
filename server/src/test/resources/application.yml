@@ -1,7 +1,4 @@
 spring:
-  cache:
-    jcache:
-      config: classpath:ehcache.xml
   datasource:
     driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
     url: jdbc:tc:postgresql:12.7:///test
@@ -15,6 +12,9 @@ spring:
     store-type: jdbc
     jdbc:
       initialize-schema: never
+  thymeleaf:
+    # explicitly disable thymeleaf view resolution
+    enabled: false
 
   security:
       oauth2:
@@ -32,7 +32,7 @@ org:
     job-scheduler:
       enabled: true
     background-job-server:
-      enabled: true
+      enabled: false
       worker-count: 1
     dashboard:
       enabled: false
@@ -42,6 +42,8 @@ org:
       allow-anonymous-data-usage: false
 
 ovsx:
+  redis:
+    embedded: true
   storage:
     local:
       directory: /tmp

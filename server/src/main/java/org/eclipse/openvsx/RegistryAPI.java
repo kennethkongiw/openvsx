@@ -22,6 +22,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.eclipse.openvsx.entities.SemanticVersion;
 import org.eclipse.openvsx.json.*;
 import org.eclipse.openvsx.search.ISearchService;
+import org.eclipse.openvsx.search.SortBy;
 import org.eclipse.openvsx.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -757,8 +758,8 @@ public class RegistryAPI {
             @RequestParam(defaultValue = "desc") 
             @Parameter(description = "Descending or ascending sort order", schema = @Schema(type = "string", allowableValues = {"asc", "desc"}))
             String sortOrder,
-            @RequestParam(defaultValue = "relevance")
-            @Parameter(description = "Sort key (relevance is a weighted mix of various properties)", schema = @Schema(type = "string", allowableValues = {"relevance", "timestamp", "averageRating", "downloadCount"}))
+            @RequestParam(defaultValue = SortBy.RELEVANCE)
+            @Parameter(description = "Sort key (relevance is a weighted mix of various properties)", schema = @Schema(type = "string", allowableValues = {SortBy.RELEVANCE, SortBy.TIMESTAMP, SortBy.RATING, SortBy.DOWNLOADS}))
             String sortBy,
             @RequestParam(defaultValue = "false")
             @Parameter(description = "Whether to include information on all available versions for each returned entry")
@@ -1150,7 +1151,7 @@ public class RegistryAPI {
         summary = "Create a namespace",
         requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
             description = "Describes the namespace to create",
-            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(ref = "NamespaceJson")),
+            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = NamespaceJson.class)),
             required = true
         )
     )
@@ -1250,7 +1251,7 @@ public class RegistryAPI {
                     .location(URI.create(url))
                     .body(json);
         } catch (ErrorResultException exc) {
-            logger.warn("Failed to publish extension", exc);
+            logger.warn("Failed to publish extension: {}", exc.getMessage());
             return exc.toResponseEntity(ExtensionJson.class);
         }
     }
@@ -1303,7 +1304,7 @@ public class RegistryAPI {
                     .location(URI.create(url))
                     .body(json);
         } catch (ErrorResultException exc) {
-            logger.warn("Failed to publish extension", exc);
+            logger.warn("Failed to publish extension: {}", exc.getMessage());
             return exc.toResponseEntity(ExtensionJson.class);
         }
     }
